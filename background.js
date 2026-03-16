@@ -1,18 +1,20 @@
 /**
  * Amazon Review Analyzer — Background Service Worker
- * Handles Claude API calls to keep the API key out of the content script.
+ * Fetches all review pages directly, then calls Claude for analysis.
  */
 
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
-const MAX_REVIEWS_PER_CALL = 50;
+const DEFAULT_MAX_PAGES = 5;
+const MAX_REVIEWS_TO_ANALYZE = 100;
 const MAX_REVIEW_CHARS = 600;
 
 // ─── Message listener ─────────────────────────────────────────────────────────
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'ANALYZE_REVIEWS') {
-    handleAnalysis(message).then(sendResponse).catch((err) => {
+    const tabId = sender.tab?.id;
+    handleAnalysis(message, tabId).then(sendResponse).catch((err) => {
       sendResponse({ error: err.message || 'Unknown error occurred.' });
     });
     return true; // keep channel open for async response
@@ -21,24 +23,40 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 // ─── Main analysis handler ────────────────────────────────────────────────────
 
-async function handleAnalysis({ reviews, productTitle, asin }) {
+async function handleAnalysis({ asin, domain, productTitle }, tabId) {
   const settings = await getSettings();
 
   if (!settings.apiKey) {
     return {
-      error:
-        'No API key configured. Please add your Anthropic API key in the extension settings.',
+      error: 'No API key configured. Please add your Anthropic API key in the extension settings.',
     };
   }
 
-  // Limit and truncate reviews to stay within token limits
-  const selected = reviews.slice(0, MAX_REVIEWS_PER_CALL);
-  const truncated = selected.map((r) => ({
+  const maxPages = settings.maxPages || DEFAULT_MAX_PAGES;
+
+  // Fetch all review pages
+  let allReviews;
+  try {
+    allReviews = await fetchAllReviews(asin, domain, maxPages, tabId);
+  } catch (err) {
+    return { error: 'Failed to fetch reviews: ' + err.message };
+  }
+
+  if (allReviews.length === 0) {
+    return {
+      error: 'No reviews could be fetched. The product may have no reviews yet.',
+    };
+  }
+
+  sendProgress(tabId, `Analyzing ${allReviews.length} reviews with Claude…`);
+
+  // Cap how many we send to Claude to control token cost
+  const toAnalyze = allReviews.slice(0, MAX_REVIEWS_TO_ANALYZE).map((r) => ({
     ...r,
     body: r.body.length > MAX_REVIEW_CHARS ? r.body.slice(0, MAX_REVIEW_CHARS) + '…' : r.body,
   }));
 
-  const prompt = buildPrompt(productTitle, truncated);
+  const prompt = buildPrompt(productTitle || 'this product', toAnalyze);
   const model = settings.model || DEFAULT_MODEL;
 
   let responseText;
@@ -50,12 +68,89 @@ async function handleAnalysis({ reviews, productTitle, asin }) {
 
   let parsed;
   try {
-    parsed = parseResponse(responseText, truncated.length);
+    parsed = parseResponse(responseText, toAnalyze.length, allReviews.length);
   } catch (err) {
     return { error: 'Failed to parse AI response. Please try again.' };
   }
 
   return { data: parsed };
+}
+
+// ─── Multi-page review fetcher ────────────────────────────────────────────────
+
+async function fetchAllReviews(asin, domain, maxPages, tabId) {
+  const allReviews = [];
+
+  for (let page = 1; page <= maxPages; page++) {
+    sendProgress(tabId, `Fetching reviews — page ${page} of up to ${maxPages}…`);
+
+    const url = `https://${domain}/product-reviews/${asin}?pageNumber=${page}&reviewerType=all_reviews`;
+
+    let html;
+    try {
+      html = await fetchPage(url);
+    } catch {
+      break; // network error, stop gracefully
+    }
+
+    if (!html) break;
+
+    const pageReviews = parseReviewsFromHtml(html);
+    if (pageReviews.length === 0) break; // no reviews on this page = done
+
+    allReviews.push(...pageReviews);
+
+    if (!hasNextPage(html)) break; // no "Next page" link = last page
+  }
+
+  return allReviews;
+}
+
+async function fetchPage(url) {
+  const response = await fetch(url, {
+    credentials: 'include', // send Amazon session cookies so pages load correctly
+    headers: { Accept: 'text/html,application/xhtml+xml' },
+  });
+  if (!response.ok) return null;
+  return response.text();
+}
+
+function parseReviewsFromHtml(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const reviews = [];
+
+  doc.querySelectorAll('[data-hook="review"]').forEach((el) => {
+    const bodyEl = el.querySelector('[data-hook="review-body"] span');
+    const ratingEl = el.querySelector(
+      '[data-hook="review-star-rating"] .a-icon-alt, [data-hook="cmps-review-star-rating"] .a-icon-alt'
+    );
+    const titleEl = el.querySelector('[data-hook="review-title"] span:not(.a-icon-alt)');
+    const verifiedEl = el.querySelector('[data-hook="avp-badge"]');
+
+    const body = bodyEl ? bodyEl.textContent.trim() : null;
+    const rating = parseFloat(ratingEl ? ratingEl.textContent : '') || null;
+    const title = titleEl ? titleEl.textContent.trim() : null;
+    const verified = !!verifiedEl;
+
+    if (body && body.length > 10) {
+      reviews.push({ body, rating, title, verified });
+    }
+  });
+
+  return reviews;
+}
+
+function hasNextPage(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  // Amazon marks the disabled next-page button with .a-disabled on the li
+  return !!doc.querySelector('.a-pagination .a-last:not(.a-disabled) a');
+}
+
+// ─── Progress helper ──────────────────────────────────────────────────────────
+
+function sendProgress(tabId, text) {
+  if (!tabId) return;
+  chrome.tabs.sendMessage(tabId, { type: 'ARA_PROGRESS', text }).catch(() => {});
 }
 
 // ─── Prompt builder ───────────────────────────────────────────────────────────
@@ -127,8 +222,7 @@ async function callClaude(apiKey, model, prompt) {
 
 // ─── Response parser ──────────────────────────────────────────────────────────
 
-function parseResponse(text, analyzedCount) {
-  // Strip any accidental markdown fences
+function parseResponse(text, analyzedCount, totalFetched) {
   const cleaned = text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim();
   const parsed = JSON.parse(cleaned);
 
@@ -143,7 +237,7 @@ function parseResponse(text, analyzedCount) {
       reason: String(parsed.authenticity?.reason || ''),
     },
     analyzedCount,
-    reviewCount: analyzedCount,
+    reviewCount: totalFetched,
   };
 }
 
@@ -192,6 +286,9 @@ function formatApiError(err) {
 
 function getSettings() {
   return new Promise((resolve) => {
-    chrome.storage.sync.get({ apiKey: '', model: DEFAULT_MODEL }, resolve);
+    chrome.storage.sync.get(
+      { apiKey: '', model: DEFAULT_MODEL, maxPages: DEFAULT_MAX_PAGES },
+      resolve
+    );
   });
 }

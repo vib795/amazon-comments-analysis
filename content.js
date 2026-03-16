@@ -265,27 +265,25 @@ async function runAnalysis(forceRefresh = false) {
     }
   }
 
-  showLoading('Reading reviews...');
-  const reviews = scrapeReviews();
-
-  if (reviews.length === 0) {
-    showError('No reviews found on this page. Try scrolling to the reviews section first.');
-    return;
-  }
-
-  showLoading(`Analyzing ${reviews.length} review${reviews.length !== 1 ? 's' : ''} with Claude…`);
-
-  const productTitle = getProductTitle();
+  showLoading('Fetching reviews…');
 
   chrome.runtime.sendMessage(
-    { type: 'ANALYZE_REVIEWS', reviews, productTitle, asin },
+    {
+      type: 'ANALYZE_REVIEWS',
+      asin,
+      domain: window.location.hostname,
+      productTitle: getProductTitle(),
+    },
     async (response) => {
       if (chrome.runtime.lastError) {
         showError('Extension error: ' + chrome.runtime.lastError.message);
         return;
       }
       if (response.error) {
-        const isApiKeyError = response.error.includes('API key') || response.error.includes('401') || response.error.includes('403');
+        const isApiKeyError =
+          response.error.includes('API key') ||
+          response.error.includes('401') ||
+          response.error.includes('403');
         showError(response.error, isApiKeyError);
         return;
       }
@@ -319,7 +317,11 @@ function renderSentimentBadge(score, label) {
 function renderReviewStats(total, analyzed) {
   const el = document.getElementById('ara-review-stats');
   if (!el) return;
-  el.textContent = `Based on ${analyzed} review${analyzed !== 1 ? 's' : ''} analyzed`;
+  if (total > analyzed) {
+    el.textContent = `${total} reviews fetched · ${analyzed} analyzed`;
+  } else {
+    el.textContent = `Based on ${analyzed} review${analyzed !== 1 ? 's' : ''}`;
+  }
 }
 
 function renderAuthenticity(auth) {
@@ -393,7 +395,7 @@ function renderFooterNote(total, analyzed) {
   const el = document.getElementById('ara-footer-note');
   if (!el) return;
   if (total > analyzed) {
-    el.textContent = `Only visible reviews were analyzed. Scroll down to load more reviews, then re-analyze.`;
+    el.textContent = `${total} reviews fetched; ${analyzed} sent to Claude. Increase "Max pages" in Settings to analyze more.`;
     el.classList.remove('ara-hidden');
   } else {
     el.classList.add('ara-hidden');
@@ -407,6 +409,15 @@ function escapeHtml(str) {
   div.appendChild(document.createTextNode(str));
   return div.innerHTML;
 }
+
+// ─── Progress listener (from background service worker) ───────────────────────
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.type === 'ARA_PROGRESS') {
+    const el = document.getElementById('ara-loading-text');
+    if (el) el.textContent = message.text;
+  }
+});
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 

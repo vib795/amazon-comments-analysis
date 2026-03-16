@@ -1,5 +1,6 @@
 const apiKeyInput = document.getElementById('api-key');
 const modelSelect = document.getElementById('model-select');
+const maxPagesSelect = document.getElementById('max-pages');
 const toggleKeyBtn = document.getElementById('toggle-key');
 const saveBtn = document.getElementById('save-btn');
 const saveStatus = document.getElementById('save-status');
@@ -7,9 +8,10 @@ const clearCacheBtn = document.getElementById('clear-cache-btn');
 const cacheStatus = document.getElementById('cache-status');
 
 // Load saved settings
-chrome.storage.sync.get({ apiKey: '', model: 'claude-haiku-4-5-20251001' }, (settings) => {
+chrome.storage.sync.get({ apiKey: '', model: 'claude-haiku-4-5-20251001', maxPages: 5 }, (settings) => {
   apiKeyInput.value = settings.apiKey;
   modelSelect.value = settings.model;
+  maxPagesSelect.value = String(settings.maxPages);
 });
 
 // Toggle API key visibility
@@ -28,8 +30,9 @@ document.getElementById('settings-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const apiKey = apiKeyInput.value.trim();
   const model = modelSelect.value;
+  const maxPages = parseInt(maxPagesSelect.value, 10);
 
-  chrome.storage.sync.set({ apiKey, model }, () => {
+  chrome.storage.sync.set({ apiKey, model, maxPages }, () => {
     showStatus(saveStatus, 'Settings saved!', false);
   });
 });

@@ -62,6 +62,22 @@
         </section>
 
         <section class="card">
+          <h2>Review Depth</h2>
+          <p class="description">
+            How many pages of reviews to fetch and analyze. Each page has ~10 reviews.
+            More pages = fuller picture, but slightly slower and higher API cost.
+          </p>
+          <div class="field">
+            <label for="max-pages">Max pages to fetch</label>
+            <select id="max-pages">
+              <option value="3">3 pages (~30 reviews) — Quick</option>
+              <option value="5">5 pages (~50 reviews) — Balanced (recommended)</option>
+              <option value="10">10 pages (~100 reviews) — Thorough</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="card">
           <h2>Cache</h2>
           <p class="description">
             Analysis results are cached for 1 hour per product to avoid redundant API calls.
