@@ -1,0 +1,63 @@
+{
+  "manifest_version": 3,
+  "name": "Amazon Review Analyzer",
+  "version": "1.0.0",
+  "description": "Instantly summarize Amazon product reviews — pros, cons, issues, and sentiment powered by Claude AI.",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://www.amazon.com/*",
+    "https://www.amazon.co.uk/*",
+    "https://www.amazon.ca/*",
+    "https://www.amazon.com.au/*",
+    "https://www.amazon.de/*",
+    "https://www.amazon.fr/*",
+    "https://www.amazon.it/*",
+    "https://www.amazon.es/*",
+    "https://api.anthropic.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.amazon.com/*/dp/*",
+        "https://www.amazon.com/dp/*",
+        "https://www.amazon.co.uk/*/dp/*",
+        "https://www.amazon.co.uk/dp/*",
+        "https://www.amazon.ca/*/dp/*",
+        "https://www.amazon.ca/dp/*",
+        "https://www.amazon.com.au/*/dp/*",
+        "https://www.amazon.com.au/dp/*",
+        "https://www.amazon.de/*/dp/*",
+        "https://www.amazon.de/dp/*",
+        "https://www.amazon.fr/*/dp/*",
+        "https://www.amazon.fr/dp/*",
+        "https://www.amazon.it/*/dp/*",
+        "https://www.amazon.it/dp/*",
+        "https://www.amazon.es/*/dp/*",
+        "https://www.amazon.es/dp/*"
+      ],
+      "js": ["content.js"],
+      "css": ["sidebar.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "options_page": "options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Amazon Review Analyzer</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="popup">
+    <header>
+      <div class="logo">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+        </svg>
+        Review Analyzer
+      </div>
+    </header>
+
+    <div id="status-amazon" class="status-block status-amazon ara-hidden">
+      <div class="status-icon">&#10003;</div>
+      <div>
+        <strong>Active on this page</strong>
+        <p>Look for the sidebar on the right side of the page.</p>
+      </div>
+    </div>
+
+    <div id="status-not-amazon" class="status-block status-not-amazon ara-hidden">
+      <div class="status-icon">&#8212;</div>
+      <div>
+        <strong>Not an Amazon product page</strong>
+        <p>Navigate to an Amazon product page to use this extension.</p>
+      </div>
+    </div>
+
+    <div id="status-no-key" class="status-block status-no-key ara-hidden">
+      <div class="status-icon">&#9888;</div>
+      <div>
+        <strong>API key not configured</strong>
+        <p>Add your Anthropic API key to get started.</p>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="open-settings-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="currentColor" stroke-width="2"/>
+        </svg>
+        Settings
+      </button>
+    </div>
+
+    <footer>Powered by Claude AI</footer>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

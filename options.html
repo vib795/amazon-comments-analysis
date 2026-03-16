@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Amazon Review Analyzer — Settings</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+        </svg>
+        Amazon Review Analyzer
+      </div>
+      <p class="tagline">Powered by Claude AI</p>
+    </header>
+
+    <main>
+      <form id="settings-form">
+
+        <section class="card">
+          <h2>Anthropic API Key</h2>
+          <p class="description">
+            Your API key is stored locally in your browser and only used to call the Anthropic API.
+            Get one at <a href="https://console.anthropic.com/" target="_blank">console.anthropic.com</a>.
+          </p>
+          <div class="field">
+            <label for="api-key">API Key</label>
+            <div class="input-row">
+              <input
+                type="password"
+                id="api-key"
+                placeholder="sk-ant-api03-..."
+                autocomplete="off"
+                spellcheck="false"
+              />
+              <button type="button" id="toggle-key" title="Show/hide key">
+                <svg id="eye-icon" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path d="M1 12S5 4 12 4s11 8 11 8-4 8-11 8S1 12 1 12z" stroke="currentColor" stroke-width="2"/>
+                  <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Model</h2>
+          <p class="description">Choose between speed/cost and quality. Haiku is recommended for most users.</p>
+          <div class="field">
+            <label for="model-select">Claude Model</label>
+            <select id="model-select">
+              <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 — Fast &amp; affordable (recommended)</option>
+              <option value="claude-sonnet-4-6">Claude Sonnet 4.6 — Higher quality, slower</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Cache</h2>
+          <p class="description">
+            Analysis results are cached for 1 hour per product to avoid redundant API calls.
+          </p>
+          <button type="button" id="clear-cache-btn" class="btn-secondary">
+            Clear Cached Results
+          </button>
+          <span id="cache-status" class="status-msg"></span>
+        </section>
+
+        <div class="actions">
+          <button type="submit" class="btn-primary" id="save-btn">Save Settings</button>
+          <span id="save-status" class="status-msg"></span>
+        </div>
+
+      </form>
+    </main>
+
+    <footer>
+      <p>Amazon Review Analyzer &mdash; open source, privacy-focused</p>
+    </footer>
+  </div>
+  <script src="options.js"></script>
+</body>
+</html>
