@@ -1,6 +1,6 @@
 /**
  * Amazon Review Analyzer — Content Script
- * Injects the sidebar, scrapes reviews, and coordinates with the background worker.
+ * Injects the sidebar, fetches + parses review pages, and coordinates with the background worker.
  */
 
 const SIDEBAR_ID = 'ara-sidebar';
@@ -10,7 +10,7 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 // ─── ASIN extraction ──────────────────────────────────────────────────────────
 
 function getASIN() {
-  // Product detail page: /dp/ASIN or /gp/product/ASIN
+  // Product detail page: /dp/ASIN
   let match = window.location.pathname.match(/\/dp\/([A-Z0-9]{10})/);
   if (match) return match[1];
   // All-reviews page: /product-reviews/ASIN
@@ -18,47 +18,83 @@ function getASIN() {
   return match ? match[1] : null;
 }
 
-// ─── Review scraping ─────────────────────────────────────────────────────────
+// ─── Multi-page review fetching ───────────────────────────────────────────────
 
-function scrapeReviews() {
+async function fetchAllReviews(asin, maxPages) {
+  const allReviews = [];
+  const domain = window.location.hostname;
+
+  for (let page = 1; page <= maxPages; page++) {
+    showLoading(`Fetching reviews — page ${page} of up to ${maxPages}…`);
+
+    const url =
+      `https://${domain}/product-reviews/${asin}` +
+      `?pageNumber=${page}&reviewerType=all_reviews`;
+
+    let html;
+    try {
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) break;
+      html = await res.text();
+    } catch {
+      break;
+    }
+
+    const pageReviews = parseReviewsFromHTML(html);
+    if (pageReviews.length === 0) break;
+
+    allReviews.push(...pageReviews);
+
+    if (!hasNextPage(html)) break;
+  }
+
+  return allReviews;
+}
+
+function parseReviewsFromHTML(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
   const reviews = [];
 
-  // Primary selector (product detail page reviews section)
-  const reviewElements = document.querySelectorAll(
-    '[data-hook="review"], .review, [id^="customer_review-"]'
-  );
-
-  reviewElements.forEach((el) => {
-    const bodyEl = el.querySelector(
-      '[data-hook="review-body"] span, .review-text-content span, [data-hook="review-body"]'
-    );
+  doc.querySelectorAll('[data-hook="review"]').forEach((el) => {
+    const bodyEl = el.querySelector('[data-hook="review-body"] span');
     const ratingEl = el.querySelector(
-      '[data-hook="review-star-rating"] .a-icon-alt, [data-hook="cmps-review-star-rating"] .a-icon-alt, .review-rating .a-icon-alt'
+      '[data-hook="review-star-rating"] .a-icon-alt, ' +
+      '[data-hook="cmps-review-star-rating"] .a-icon-alt'
     );
     const titleEl = el.querySelector(
-      '[data-hook="review-title"] span:not(.a-icon-alt), .review-title span'
+      '[data-hook="review-title"] span:not(.a-icon-alt)'
     );
-    const verifiedEl = el.querySelector('[data-hook="avp-badge"], .avp-badge');
-    const dateEl = el.querySelector('[data-hook="review-date"], .review-date');
+    const verifiedEl = el.querySelector('[data-hook="avp-badge"]');
 
-    const body = bodyEl ? bodyEl.innerText.trim() : null;
-    const ratingText = ratingEl ? ratingEl.innerText : '';
-    const rating = parseFloat(ratingText) || null;
-    const title = titleEl ? titleEl.innerText.trim() : null;
+    const body = bodyEl ? bodyEl.textContent.trim() : null;
+    const rating = parseFloat(ratingEl ? ratingEl.textContent : '') || null;
+    const title = titleEl ? titleEl.textContent.trim() : null;
     const verified = !!verifiedEl;
-    const date = dateEl ? dateEl.innerText.trim() : null;
 
     if (body && body.length > 10) {
-      reviews.push({ body, rating, title, verified, date });
+      reviews.push({ body, rating, title, verified });
     }
   });
 
   return reviews;
 }
 
+function hasNextPage(html) {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  // Amazon marks the disabled next-page li with .a-disabled
+  return !!doc.querySelector('.a-pagination .a-last:not(.a-disabled) a');
+}
+
+// ─── Product metadata (current page DOM) ─────────────────────────────────────
+
 function getProductTitle() {
-  const el = document.querySelector('#productTitle, #title');
-  return el ? el.innerText.trim() : 'this product';
+  // Product detail page
+  let el = document.querySelector('#productTitle, #title');
+  if (el) return el.innerText.trim();
+  // Reviews page — product link in the header
+  el = document.querySelector('[data-hook="product-link"]');
+  if (el) return el.innerText.trim();
+  return 'this product';
 }
 
 function getOverallRating() {
@@ -92,7 +128,16 @@ async function getCached(asin) {
 
 async function setCache(asin, data) {
   return new Promise((resolve) => {
-    chrome.storage.local.set({ [CACHE_PREFIX + asin]: { data, ts: Date.now() } }, resolve);
+    chrome.storage.local.set(
+      { [CACHE_PREFIX + asin]: { data, ts: Date.now() } },
+      resolve
+    );
+  });
+}
+
+async function getMaxPages() {
+  return new Promise((resolve) => {
+    chrome.storage.sync.get({ maxPages: 5 }, (s) => resolve(s.maxPages));
   });
 }
 
@@ -131,7 +176,7 @@ function injectSidebar() {
       </div>
       <div id="ara-loading" class="ara-hidden">
         <div class="ara-spinner"></div>
-        <p id="ara-loading-text">Reading reviews...</p>
+        <p id="ara-loading-text">Fetching reviews…</p>
       </div>
       <div id="ara-results" class="ara-hidden">
         <div id="ara-results-header">
@@ -146,7 +191,7 @@ function injectSidebar() {
         <div id="ara-review-stats"></div>
         <div id="ara-authenticity" class="ara-hidden"></div>
         <div id="ara-sections"></div>
-        <p id="ara-footer-note"></p>
+        <p id="ara-footer-note" class="ara-hidden"></p>
       </div>
       <div id="ara-error" class="ara-hidden">
         <div id="ara-error-icon">⚠</div>
@@ -178,47 +223,38 @@ function populateProductMeta() {
   if (title || rating) {
     metaEl.innerHTML = `
       <div class="ara-product-title">${escapeHtml(title.slice(0, 80))}${title.length > 80 ? '…' : ''}</div>
-      ${rating || count ? `<div class="ara-product-rating">${rating ? rating : ''} ${count ? '· ' + count : ''}</div>` : ''}
+      ${rating || count ? `<div class="ara-product-rating">${rating || ''} ${count ? '· ' + count : ''}</div>` : ''}
     `;
   }
 }
 
 // ─── Sidebar state machine ────────────────────────────────────────────────────
 
-let isCollapsed = false;
-
 function setupSidebarEvents(sidebar) {
   const toggleBtn = document.getElementById('ara-toggle');
   const collapsedTab = document.getElementById('ara-collapsed-tab');
-  const analyzeBtn = document.getElementById('ara-analyze-btn');
-  const refreshBtn = document.getElementById('ara-refresh-btn');
-  const retryBtn = document.getElementById('ara-retry-btn');
-  const settingsBtn = document.getElementById('ara-error-settings-btn');
 
   toggleBtn.addEventListener('click', () => {
-    isCollapsed = true;
     sidebar.classList.add('ara-collapsed');
     collapsedTab.classList.remove('ara-hidden');
     toggleBtn.style.display = 'none';
   });
 
   collapsedTab.addEventListener('click', () => {
-    isCollapsed = false;
     sidebar.classList.remove('ara-collapsed');
     collapsedTab.classList.add('ara-hidden');
     toggleBtn.style.display = '';
   });
 
-  analyzeBtn.addEventListener('click', () => runAnalysis(false));
-  refreshBtn.addEventListener('click', () => runAnalysis(true));
-  retryBtn.addEventListener('click', () => runAnalysis(false));
-
-  if (settingsBtn) {
-    settingsBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());
-  }
+  document.getElementById('ara-analyze-btn').addEventListener('click', () => runAnalysis(false));
+  document.getElementById('ara-refresh-btn').addEventListener('click', () => runAnalysis(true));
+  document.getElementById('ara-retry-btn').addEventListener('click', () => runAnalysis(false));
+  document.getElementById('ara-error-settings-btn').addEventListener('click', () =>
+    chrome.runtime.openOptionsPage()
+  );
 }
 
-function showLoading(message = 'Reading reviews...') {
+function showLoading(message = 'Fetching reviews…') {
   document.getElementById('ara-idle').classList.add('ara-hidden');
   document.getElementById('ara-results').classList.add('ara-hidden');
   document.getElementById('ara-error').classList.add('ara-hidden');
@@ -241,11 +277,7 @@ function showError(message, showSettingsBtn = false) {
   document.getElementById('ara-error').classList.remove('ara-hidden');
   document.getElementById('ara-error-msg').textContent = message;
   const settingsBtn = document.getElementById('ara-error-settings-btn');
-  if (showSettingsBtn) {
-    settingsBtn.classList.remove('ara-hidden');
-  } else {
-    settingsBtn.classList.add('ara-hidden');
-  }
+  settingsBtn.classList.toggle('ara-hidden', !showSettingsBtn);
 }
 
 // ─── Analysis runner ──────────────────────────────────────────────────────────
@@ -265,15 +297,18 @@ async function runAnalysis(forceRefresh = false) {
     }
   }
 
-  showLoading('Fetching reviews…');
+  const maxPages = await getMaxPages();
+  const reviews = await fetchAllReviews(asin, maxPages);
+
+  if (reviews.length === 0) {
+    showError('No reviews could be fetched. The product may have no reviews yet.');
+    return;
+  }
+
+  showLoading(`Analyzing ${reviews.length} reviews with Claude…`);
 
   chrome.runtime.sendMessage(
-    {
-      type: 'ANALYZE_REVIEWS',
-      asin,
-      domain: window.location.hostname,
-      productTitle: getProductTitle(),
-    },
+    { type: 'ANALYZE_REVIEWS', reviews, productTitle: getProductTitle(), asin },
     async (response) => {
       if (chrome.runtime.lastError) {
         showError('Extension error: ' + chrome.runtime.lastError.message);
@@ -318,7 +353,7 @@ function renderReviewStats(total, analyzed) {
   const el = document.getElementById('ara-review-stats');
   if (!el) return;
   if (total > analyzed) {
-    el.textContent = `${total} reviews fetched · ${analyzed} analyzed`;
+    el.textContent = `${total} reviews fetched · ${analyzed} sent to Claude`;
   } else {
     el.textContent = `Based on ${analyzed} review${analyzed !== 1 ? 's' : ''}`;
   }
@@ -376,9 +411,7 @@ function renderSections(pros, cons, issues) {
 }
 
 function buildSection(title, items, type, iconSvg) {
-  const itemsHtml = items
-    .map((item) => `<li>${escapeHtml(item)}</li>`)
-    .join('');
+  const itemsHtml = items.map((item) => `<li>${escapeHtml(item)}</li>`).join('');
   return `
     <div class="ara-section ara-section--${type}">
       <div class="ara-section-header">
@@ -410,24 +443,13 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// ─── Progress listener (from background service worker) ───────────────────────
-
-chrome.runtime.onMessage.addListener((message) => {
-  if (message.type === 'ARA_PROGRESS') {
-    const el = document.getElementById('ara-loading-text');
-    if (el) el.textContent = message.text;
-  }
-});
-
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 function init() {
-  const asin = getASIN();
-  if (!asin) return;
+  if (!getASIN()) return;
   injectSidebar();
 }
 
-// Run on load; also re-check after SPA navigation
 init();
 let lastUrl = location.href;
 new MutationObserver(() => {

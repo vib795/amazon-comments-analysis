@@ -1,20 +1,19 @@
 /**
  * Amazon Review Analyzer — Background Service Worker
- * Fetches all review pages directly, then calls Claude for analysis.
+ * Only responsible for calling the Claude API.
+ * All review fetching and parsing happens in content.js (which has DOM access).
  */
 
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
-const DEFAULT_MAX_PAGES = 5;
 const MAX_REVIEWS_TO_ANALYZE = 100;
 const MAX_REVIEW_CHARS = 600;
 
 // ─── Message listener ─────────────────────────────────────────────────────────
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'ANALYZE_REVIEWS') {
-    const tabId = sender.tab?.id;
-    handleAnalysis(message, tabId).then(sendResponse).catch((err) => {
+    handleAnalysis(message).then(sendResponse).catch((err) => {
       sendResponse({ error: err.message || 'Unknown error occurred.' });
     });
     return true; // keep channel open for async response
@@ -23,7 +22,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // ─── Main analysis handler ────────────────────────────────────────────────────
 
-async function handleAnalysis({ asin, domain, productTitle }, tabId) {
+async function handleAnalysis({ reviews, productTitle, asin }) {
   const settings = await getSettings();
 
   if (!settings.apiKey) {
@@ -32,26 +31,8 @@ async function handleAnalysis({ asin, domain, productTitle }, tabId) {
     };
   }
 
-  const maxPages = settings.maxPages || DEFAULT_MAX_PAGES;
-
-  // Fetch all review pages
-  let allReviews;
-  try {
-    allReviews = await fetchAllReviews(asin, domain, maxPages, tabId);
-  } catch (err) {
-    return { error: 'Failed to fetch reviews: ' + err.message };
-  }
-
-  if (allReviews.length === 0) {
-    return {
-      error: 'No reviews could be fetched. The product may have no reviews yet.',
-    };
-  }
-
-  sendProgress(tabId, `Analyzing ${allReviews.length} reviews with Claude…`);
-
-  // Cap how many we send to Claude to control token cost
-  const toAnalyze = allReviews.slice(0, MAX_REVIEWS_TO_ANALYZE).map((r) => ({
+  // Cap and truncate to stay within token budget
+  const toAnalyze = reviews.slice(0, MAX_REVIEWS_TO_ANALYZE).map((r) => ({
     ...r,
     body: r.body.length > MAX_REVIEW_CHARS ? r.body.slice(0, MAX_REVIEW_CHARS) + '…' : r.body,
   }));
@@ -68,89 +49,12 @@ async function handleAnalysis({ asin, domain, productTitle }, tabId) {
 
   let parsed;
   try {
-    parsed = parseResponse(responseText, toAnalyze.length, allReviews.length);
-  } catch (err) {
+    parsed = parseResponse(responseText, toAnalyze.length, reviews.length);
+  } catch {
     return { error: 'Failed to parse AI response. Please try again.' };
   }
 
   return { data: parsed };
-}
-
-// ─── Multi-page review fetcher ────────────────────────────────────────────────
-
-async function fetchAllReviews(asin, domain, maxPages, tabId) {
-  const allReviews = [];
-
-  for (let page = 1; page <= maxPages; page++) {
-    sendProgress(tabId, `Fetching reviews — page ${page} of up to ${maxPages}…`);
-
-    const url = `https://${domain}/product-reviews/${asin}?pageNumber=${page}&reviewerType=all_reviews`;
-
-    let html;
-    try {
-      html = await fetchPage(url);
-    } catch {
-      break; // network error, stop gracefully
-    }
-
-    if (!html) break;
-
-    const pageReviews = parseReviewsFromHtml(html);
-    if (pageReviews.length === 0) break; // no reviews on this page = done
-
-    allReviews.push(...pageReviews);
-
-    if (!hasNextPage(html)) break; // no "Next page" link = last page
-  }
-
-  return allReviews;
-}
-
-async function fetchPage(url) {
-  const response = await fetch(url, {
-    credentials: 'include', // send Amazon session cookies so pages load correctly
-    headers: { Accept: 'text/html,application/xhtml+xml' },
-  });
-  if (!response.ok) return null;
-  return response.text();
-}
-
-function parseReviewsFromHtml(html) {
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  const reviews = [];
-
-  doc.querySelectorAll('[data-hook="review"]').forEach((el) => {
-    const bodyEl = el.querySelector('[data-hook="review-body"] span');
-    const ratingEl = el.querySelector(
-      '[data-hook="review-star-rating"] .a-icon-alt, [data-hook="cmps-review-star-rating"] .a-icon-alt'
-    );
-    const titleEl = el.querySelector('[data-hook="review-title"] span:not(.a-icon-alt)');
-    const verifiedEl = el.querySelector('[data-hook="avp-badge"]');
-
-    const body = bodyEl ? bodyEl.textContent.trim() : null;
-    const rating = parseFloat(ratingEl ? ratingEl.textContent : '') || null;
-    const title = titleEl ? titleEl.textContent.trim() : null;
-    const verified = !!verifiedEl;
-
-    if (body && body.length > 10) {
-      reviews.push({ body, rating, title, verified });
-    }
-  });
-
-  return reviews;
-}
-
-function hasNextPage(html) {
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  // Amazon marks the disabled next-page button with .a-disabled on the li
-  return !!doc.querySelector('.a-pagination .a-last:not(.a-disabled) a');
-}
-
-// ─── Progress helper ──────────────────────────────────────────────────────────
-
-function sendProgress(tabId, text) {
-  if (!tabId) return;
-  chrome.tabs.sendMessage(tabId, { type: 'ARA_PROGRESS', text }).catch(() => {});
 }
 
 // ─── Prompt builder ───────────────────────────────────────────────────────────
@@ -287,7 +191,7 @@ function formatApiError(err) {
 function getSettings() {
   return new Promise((resolve) => {
     chrome.storage.sync.get(
-      { apiKey: '', model: DEFAULT_MODEL, maxPages: DEFAULT_MAX_PAGES },
+      { apiKey: '', model: DEFAULT_MODEL },
       resolve
     );
   });
