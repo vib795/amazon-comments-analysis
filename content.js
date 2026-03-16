@@ -10,7 +10,11 @@ const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 // ─── ASIN extraction ──────────────────────────────────────────────────────────
 
 function getASIN() {
-  const match = window.location.pathname.match(/\/dp\/([A-Z0-9]{10})/);
+  // Product detail page: /dp/ASIN or /gp/product/ASIN
+  let match = window.location.pathname.match(/\/dp\/([A-Z0-9]{10})/);
+  if (match) return match[1];
+  // All-reviews page: /product-reviews/ASIN
+  match = window.location.pathname.match(/\/product-reviews\/([A-Z0-9]{10})/);
   return match ? match[1] : null;
 }
 

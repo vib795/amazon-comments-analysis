@@ -8,7 +8,10 @@ document.getElementById('open-settings-btn').addEventListener('click', () => {
 
 // Check if we're on an Amazon product page and if the API key is set
 chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-  const isAmazon = tab && /https:\/\/www\.amazon\.[a-z.]+\/.*\/dp\/[A-Z0-9]{10}/.test(tab.url);
+  const isAmazon = tab && (
+    /https:\/\/www\.amazon\.[a-z.]+\/.*\/dp\/[A-Z0-9]{10}/.test(tab.url) ||
+    /https:\/\/www\.amazon\.[a-z.]+\/product-reviews\/[A-Z0-9]{10}/.test(tab.url)
+  );
 
   chrome.storage.sync.get({ apiKey: '' }, ({ apiKey }) => {
     if (!apiKey) {
