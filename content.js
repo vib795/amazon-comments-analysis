@@ -29,11 +29,17 @@ async function fetchAllReviews(asin, maxPages) {
 
     const url =
       `https://${domain}/product-reviews/${asin}` +
-      `?pageNumber=${page}&reviewerType=all_reviews`;
+      `?pageNumber=${page}&reviewerType=all_reviews&sortBy=recent`;
 
     let html;
     try {
-      const res = await fetch(url, { credentials: 'include' });
+      const res = await fetch(url, {
+        credentials: 'include',
+        headers: {
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+        },
+      });
       if (!res.ok) break;
       html = await res.text();
     } catch {
@@ -55,15 +61,25 @@ function parseReviewsFromHTML(html) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const reviews = [];
 
-  doc.querySelectorAll('[data-hook="review"]').forEach((el) => {
-    const bodyEl = el.querySelector('[data-hook="review-body"] span');
+  // Amazon uses both data-hook and id-based containers depending on page variant
+  const reviewEls = doc.querySelectorAll('[data-hook="review"], [id^="customer_review-"]');
+
+  reviewEls.forEach((el) => {
+    // Amazon wraps body text in a nested span[data-hook="review-collapsed"] in newer page
+    // structures, with span.review-text-content as a CSS-class fallback
+    const bodyEl =
+      el.querySelector('[data-hook="review-body"] span[data-hook="review-collapsed"]') ||
+      el.querySelector('[data-hook="review-body"] span') ||
+      el.querySelector('[data-hook="review-body"]') ||
+      el.querySelector('span.review-text-content span') ||
+      el.querySelector('span.review-text-content');
     const ratingEl = el.querySelector(
       '[data-hook="review-star-rating"] .a-icon-alt, ' +
       '[data-hook="cmps-review-star-rating"] .a-icon-alt'
     );
-    const titleEl = el.querySelector(
-      '[data-hook="review-title"] span:not(.a-icon-alt)'
-    );
+    const titleEl =
+      el.querySelector('[data-hook="review-title"] span:not(.a-icon-alt)') ||
+      el.querySelector('[data-hook="review-title"]');
     const verifiedEl = el.querySelector('[data-hook="avp-badge"]');
 
     const body = bodyEl ? bodyEl.textContent.trim() : null;
