@@ -381,7 +381,7 @@
 .ara-section-list {
   margin: 0;
   padding: 8px 10px 8px 22px;
-  list-style: none;
+  list-style: none !important;
 }
 
 .ara-section-list li {
@@ -390,8 +390,16 @@
   font-size: 12px;
   line-height: 1.45;
   color: #333;
+  list-style: none !important;
 }
 
+/* Suppress any bullet Amazon's page CSS injects via ::marker */
+.ara-section-list li::marker {
+  content: '' !important;
+  display: none !important;
+}
+
+/* Our single intentional bullet */
 .ara-section-list li::before {
   content: '•';
   position: absolute;
