@@ -47,11 +47,9 @@ async function fetchAllReviews(asin, maxPages) {
     }
 
     const pageReviews = parseReviewsFromHTML(html);
-    if (pageReviews.length === 0) break;
+    if (pageReviews.length === 0) break; // no reviews on this page = genuinely done
 
     allReviews.push(...pageReviews);
-
-    if (!hasNextPage(html)) break;
   }
 
   return allReviews;
@@ -93,12 +91,6 @@ function parseReviewsFromHTML(html) {
   });
 
   return reviews;
-}
-
-function hasNextPage(html) {
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  // Amazon marks the disabled next-page li with .a-disabled
-  return !!doc.querySelector('.a-pagination .a-last:not(.a-disabled) a');
 }
 
 // ─── Product metadata (current page DOM) ─────────────────────────────────────
@@ -153,7 +145,7 @@ async function setCache(asin, data) {
 
 async function getMaxPages() {
   return new Promise((resolve) => {
-    chrome.storage.sync.get({ maxPages: 5 }, (s) => resolve(s.maxPages));
+    chrome.storage.sync.get({ maxPages: 10 }, (s) => resolve(s.maxPages));
   });
 }
 

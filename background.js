@@ -6,7 +6,7 @@
 
 const CLAUDE_API_URL = 'https://api.anthropic.com/v1/messages';
 const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
-const MAX_REVIEWS_TO_ANALYZE = 100;
+const MAX_REVIEWS_TO_ANALYZE = 300;
 const MAX_REVIEW_CHARS = 600;
 
 // ─── Message listener ─────────────────────────────────────────────────────────

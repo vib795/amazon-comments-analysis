@@ -8,7 +8,7 @@ const clearCacheBtn = document.getElementById('clear-cache-btn');
 const cacheStatus = document.getElementById('cache-status');
 
 // Load saved settings
-chrome.storage.sync.get({ apiKey: '', model: 'claude-haiku-4-5-20251001', maxPages: 5 }, (settings) => {
+chrome.storage.sync.get({ apiKey: '', model: 'claude-haiku-4-5-20251001', maxPages: 10 }, (settings) => {
   apiKeyInput.value = settings.apiKey;
   modelSelect.value = settings.model;
   maxPagesSelect.value = String(settings.maxPages);
