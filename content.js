@@ -27,9 +27,17 @@ async function fetchAllReviews(asin, maxPages) {
   for (let page = 1; page <= maxPages; page++) {
     showLoading(`Fetching reviews — page ${page} of up to ${maxPages}…`);
 
+    // Delay between requests (skip on first page) so Amazon doesn't treat
+    // rapid sequential fetches as bot traffic and return a CAPTCHA page
+    if (page > 1) {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+
+    // Use ie=UTF8 to match Amazon's own paginated URL format; avoid sortBy
+    // parameter as it alters the URL structure and breaks pagination on some products
     const url =
       `https://${domain}/product-reviews/${asin}` +
-      `?pageNumber=${page}&reviewerType=all_reviews&sortBy=recent`;
+      `?ie=UTF8&pageNumber=${page}&reviewerType=all_reviews`;
 
     let html;
     try {
